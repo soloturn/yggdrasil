@@ -90,19 +90,86 @@ After install, open a fresh Git Bash session so the updated `PATH` is picked up.
 
 **Linux:** See https://gitlab.com/gitlab-org/cli#installation
 
-### Create a Personal Access Token
+### Create a Token
 
-Go to **GitLab → User Settings → Access Tokens** (or for self-hosted:
-`https://<your-host>/-/user_settings/personal_access_tokens`).
+GitLab offers three token types with increasing scope. Use the narrowest one
+that covers your use case:
 
-Settings:
-- **Token name**: descriptive, e.g. `yggdrasil-workspace`
-- **Expiration**: set a reasonable expiry
-- **Scopes**:
+| Token type | Scope | How to create |
+|------------|-------|---------------|
+| **Project Access Token** | Single project | Project → Settings → Access Tokens |
+| **Group Access Token** | All repos in a group | Group → Settings → Access Tokens |
+| **Personal Access Token** | Entire account | User Settings → Access Tokens |
+
+**Recommended:** use a **Project Access Token** for a single test repo, or a
+**Group Access Token** if your workspace components all live under one group.
+Personal Access Tokens with `api` scope work but give broader access than needed.
+
+> **gitlab.com free tier:** Group and Project Access Tokens require a paid
+> subscription (Premium+). Use a **Personal Access Token** with `api` scope
+> instead. For the multi-token setup (fork → upstream), you can point multiple
+> env vars at the same PAT (see `.env.example` for variable names) — the token
+> routing logic still works, you just don't get the access-level separation
+> that scoped tokens provide.
+
+Choose the narrowest role that matches the token's job:
+- **Developer** for fork/write tokens that must push branches or create MRs.
+- **Reporter** for upstream read/review/issue tokens in the split-token setup.
+
+#### Token naming
+
+**GitLab display name** (what appears as the MR/issue author bot):
+
+Pattern: `<scope>-<owner>-<role>` where scope is the group or project slug,
+owner is your username, and role is the GitLab role level. For personal
+namespaces (no shared scope), omit the scope prefix and use `<owner>-<role>`.
+
+| Token's job | GitLab display name | Why |
+|---|---|---|
+| Fork group write | `gdd-rpraestholm-developer` | Group slug + owner + GitLab role |
+| Upstream group read | `gdd-reporter` | Group slug + role (shared, no owner) |
+| Personal namespace write | `rpraestholm-developer` | Namespace + role |
+| Single-project write | `aws-ops-wheel-rpraestholm-developer` | Project + owner + role |
+
+With a well-named token, an MR opened by the agent shows as authored by
+e.g. `gdd-rpraestholm-developer` — the human connection is clear even though
+it's a bot account. Combined with `@HUMAN_ACCOUNT` in the MR body, this is
+the primary attribution mechanism on GitLab (see `docs/cr-internals.md`).
+
+**Env var name** (used in `.env` and referenced in `gitTokens`):
+
+Patterns (no redundant `_TOKEN` suffix; all entries are tokens):
+
+- `GITLAB_<SCOPE>_<ROLE>` — shared scope, single owner implied (e.g. `GITLAB_GDD_REPORTER`)
+- `GITLAB_<SCOPE>_<OWNER>_<ROLE>` — personal variant within a shared scope (e.g. `GITLAB_GDD_RPRAESTHOLM_DEVELOPER`)
+- `GITLAB_<OWNER>_<ROLE>` — personal-namespace token, no group scope (e.g. `GITLAB_RPRAESTHOLM_DEVELOPER`)
+- `GITLAB_<OWNER>_PAT` — full-account token; `_PAT` signals broad scope
+
+| Token's job | Env var | Notes |
+|---|---|---|
+| GDD upstream group read | `GITLAB_GDD_REPORTER` | Group path slug, reporter role |
+| GDD fork group write | `GITLAB_GDD_RPRAESTHOLM_DEVELOPER` | Full fork-group path + owner |
+| Personal namespace write | `GITLAB_RPRAESTHOLM_DEVELOPER` | Namespace + role |
+| Personal access token | `GITLAB_RPRAESTHOLM_PAT` | Full-account token; `_PAT` signals broad scope |
+
+This naming makes `gitTokens` entries readable at a glance:
+
+```yaml
+defaults:
+  gitTokens:
+    gitlab-master.nvidia.com/gni-cis/gdd: GITLAB_GDD_REPORTER
+    gitlab-master.nvidia.com/gni-cis/gdd/rpraestholm: GITLAB_GDD_RPRAESTHOLM_DEVELOPER
+    gitlab-master.nvidia.com/rpraestholm: GITLAB_RPRAESTHOLM_PAT
+```
+
+For self-hosted instances, token URLs follow the pattern:
+`https://<your-host>/<group>/<project>/-/settings/access_tokens`.
+
+Regardless of token type, set the scope to:
 
 | Scope | Why |
 |-------|-----|
-| `api` | Full API access — MRs, issues, repo reads |
+| `api` | Required for MRs, issues, and repo writes via `glab` |
 
 ### Store the token
 
@@ -111,27 +178,60 @@ Add to `.env` in the yggdrasil root:
 ```bash
 export GITLAB_TOKEN=glpat-xxxxxxxxxxxx
 export GITLAB_USER=your-gitlab-username
-```
 
-For self-hosted instances, also set the host:
-```bash
+# Self-hosted instances only:
 export GITLAB_HOST=git.mycompany.com
 ```
 
 ### Load and verify
 
+For self-hosted instances, register the hostname with `glab` once after
+setting `GITLAB_HOST`:
+
 ```bash
 source .env
+# Uses the multi-token write var if set (see .env.example), else GITLAB_TOKEN
+glab auth login --hostname "$GITLAB_HOST" --token "${GITLAB_GDD_GROUP_WRITE_TOKEN:-$GITLAB_TOKEN}"
+```
+
+For `gitlab.com`, `glab` reads `GITLAB_TOKEN` automatically and no `auth login`
+step is needed. For self-hosted, the one-time login registers the host;
+subsequent calls use the stored credentials.
+
+Verify with:
+
+```bash
 glab auth status
 ```
 
-`glab` reads `GITLAB_TOKEN` automatically — no `glab auth login` step is needed.
+> **Note:** `glab auth status` exits non-zero if *any* configured GitLab host
+> fails authentication — including `gitlab.com` if you have no token for it.
+> Check that your self-hosted instance shows `✓ Logged in to <your-host>`.
+> The `gitlab.com` failure is harmless if you only use the self-hosted instance.
 
 ### Test
 
 ```bash
+# gitlab.com
+glab issue list --repo <your-group>/<your-repo>
+
+# Self-hosted (GITLAB_HOST must be set in environment)
+source .env
 glab issue list --repo <your-group>/<your-repo>
 ```
+
+#### Verifying token coverage
+
+Before pushing or opening a CR, confirm token routing is wired up correctly:
+
+```bash
+ws gitlab-auth --status   # shows all configured token slots and set/unset status
+ws diagnose <comp>        # shows which token covers each remote for a specific component
+```
+
+`ws diagnose` is the fastest way to confirm auth is wired up correctly for a
+new component — it shows the ecosystem entry, clone status, remotes, provider
+detection, and whether the covering token env var is set or missing.
 
 ---
 

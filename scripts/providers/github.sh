@@ -32,7 +32,7 @@ gp_check_cli() {
 gp_extract_slug() {
     local url="$1"
     # Handle SSH (ssh://git@host:port/org/repo), HTTPS (https://host/org/repo), and git@ (git@host:org/repo)
-    echo "$url" | sed 's|^ssh://[^/]*/||; s|^https\?://[^/]*/||; s|^git@[^:]*:||; s|\.git$||'
+    echo "$url" | sed 's|^ssh://[^/]*/||; s|^https://[^/]*/||; s|^http://[^/]*/||; s|^git@[^:]*:||; s|\.git$||'
 }
 
 # Query the default branch of a GitHub repo.
@@ -117,7 +117,16 @@ gp_review_list_reviews() {
 gp_review_list_comments() {
     local slug="$1" pr_num="$2" filter="${3:-.}"
     gh api "repos/$slug/pulls/$pr_num/comments" \
-        --jq ".[] | $filter | \"---\n[\(.user.login)] \(.path):\(.line // .original_line)\n\(.body[0:500])\n\"" 2>/dev/null
+        --jq ".[] | $filter | \"---\n[\(.user.login)] \(.path):\(.line // .original_line)\n\(.body)\n\"" 2>/dev/null
+}
+
+# Print formatted top-level PR notes (issue comments — not inline review comments).
+# GitHub treats PRs as issues; top-level comments live on the issues endpoint.
+# Usage: gp_review_list_notes SLUG PR_NUM [JQ_FILTER]
+gp_review_list_notes() {
+    local slug="$1" pr_num="$2" filter="${3:-.}"
+    gh api "repos/$slug/issues/$pr_num/comments" \
+        --jq ".[] | $filter | \"---\n[\(.user.login)] (note)\n\(.body)\n\"" 2>/dev/null
 }
 
 # Get PR head branch name (for --since push event lookup).
@@ -211,6 +220,18 @@ gp_review_threads_status() {
           }
         | "PR #\($pr) (\($slug)): \(.unresolved) unresolved, \(.resolved) resolved (\(.total) total)"
     '
+}
+
+# Reply to a review thread.
+# Usage: gp_review_thread_reply SLUG PR_NUM THREAD_ID MESSAGE
+gp_review_thread_reply() {
+    local slug="$1" pr_num="$2" thread_id="$3" message="$4"
+    gh api graphql -f query='
+        mutation($threadId: ID!, $body: String!) {
+          addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $threadId, body: $body}) {
+            comment { id }
+          }
+        }' -f threadId="$thread_id" -f body="$message" >/dev/null 2>&1
 }
 
 # Resolve a single thread.

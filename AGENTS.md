@@ -46,44 +46,38 @@ aligned on what the session is about. Don't front-load everything at once.
 | Repo | Tier | Role | Path |
 |------|------|------|------|
 | `yggdrasil` | — | Docs, skills, scripts, workspace root | `.` (this repo) |
-| `nordri` | 1 | Cluster substrate (Traefik, Crossplane, Velero, ArgoCD) | `components/nordri` |
-| `nidavellir` | 2 | Platform app-of-apps (Vegvísir, Mimir, Keycloak, …) | `components/nidavellir` |
-| `mimir` | 2 component | Data services via Crossplane + operators | `components/mimir` |
-| `vordu` | 2 component | BDD roadmap visualization | `components/vordu` |
-| `heimdall` | 2 component | Observability stack | `components/heimdall` |
-| `tafl` | 2 | Board game engine service | `components/tafl` |
-| `bifrost` | 2 | Bridge/gateway service | `components/bifrost` |
-| `ymir` | 3 | End-user platform | `components/ymir` |
-| `terasology` | 3 | Voxel game (fork) | `components/terasology` |
-| `destinationsol` | 3 | Space shooter game (fork) | `components/destinationsol` |
 
-Git remotes: Avoid using a generic `origin` — use explicit remote names like `siliconsaga` or your GitLab group name
+Community overlays declare their own component catalogs. If an overlay is
+active, check its `AGENTS.md` for the full Repo Roles table
+(e.g. `overlays/overlay-yggdrasil-live/AGENTS.md`).
+
+Git remotes: Avoid using a generic `origin` — use explicit remote names
+matching your Git org (e.g. your GitHub org or GitLab group name)
 
 ---
 
 ## Skills
 
-Skills live in `.agent/skills/<name>/SKILL.md`.
+Workspace-level skills live in `.agent/skills/<name>/SKILL.md`.
+Community overlays may provide additional component-specific skills in
+`overlays/<name>/.agent/skills/` — these are discovered during GDD orientation.
 
 | Skill Name | Description | Source / Reference |
 | :--- | :--- | :--- |
 | **GDD (Orchestrator)** | Guardian Driven Development — detects roles/modes, delegates to practice and mode skills | [SKILL.md](./.agent/skills/gdd/SKILL.md) |
 | **GDD Orientation** | Session startup — reads Thalamus.md, trust verification of component instructions, mode/role setup | [SKILL.md](./.agent/skills/gdd-orientation/SKILL.md) |
 | **GDD Housekeeping** | Audit Thalamus.md — review, promote, prune observations and concerns with the human | [SKILL.md](./.agent/skills/gdd-housekeeping/SKILL.md) |
-| **GDD Review Triage** | Multi-reviewer PR coordination — fetch, deduplicate, and triage findings from CodeRabbit, Copilot, and others | [SKILL.md](./.agent/skills/gdd-review-triage/SKILL.md) |
+| **GDD Review Triage** | Multi-reviewer CR coordination — fetch, deduplicate, and triage findings from CodeRabbit, Copilot, and others | [SKILL.md](./.agent/skills/gdd-review-triage/SKILL.md) |
 | **GDD Mentoring Mode** | AI explains decisions and teaches practices in context — request for any unfamiliar area | [SKILL.md](./.agent/skills/gdd-mentoring/SKILL.md) |
 | **GDD Quick Mode** | Minimal ceremony for short sessions — small tasks, fast context recovery | [SKILL.md](./.agent/skills/gdd-quick/SKILL.md) |
 | **GDD Zen Mode** | Deep single-topic focus — full ceremony, defer distractions until completion | [SKILL.md](./.agent/skills/gdd-zen/SKILL.md) |
 | **GDD Flow Mode** | Productive multi-topic drift — adaptive ceremony, incorporate tangents, live Thalamus collaboration | [SKILL.md](./.agent/skills/gdd-flow/SKILL.md) |
 | **GDD Autonomous Mode** | Permission-bounded independent work with reviewable increments | [SKILL.md](./.agent/skills/gdd-autonomous/SKILL.md) |
-| **ArgoCD Bootstrap on K3d** | Bootstrapping ArgoCD app-of-apps on k3d, CRD chicken-and-egg fixes, portable shell scripts | [SKILL.md](./.agent/skills/argocd-bootstrap-on-k3d/SKILL.md) |
 | **BDD** | Gherkin scenarios, feature authoring, planning features, runner integration, and BDD conventions | [SKILL.md](./.agent/skills/bdd/SKILL.md) |
 | **BDD pytest Runner** | pytest-bdd step definitions, test execution, and Cucumber JSON output | [SKILL.md](./.agent/skills/bdd-pytest/SKILL.md) |
-| **Crossplane on K3d** | Guide for configuring Crossplane in local K3d clusters | [SKILL.md](./.agent/skills/crossplane-on-k3d/SKILL.md) |
 | **Creating GitHub Issues** | Pre-flight checks, issue templates, and filing process for deferring work to GitHub issues | [SKILL.md](./.agent/skills/creating-github-issues/SKILL.md) |
 | **KUTTL Testing** | Guidelines for writing and running KUTTL tests | [SKILL.md](./.agent/skills/kuttl-testing/SKILL.md) |
 | **Multi-Repo Orchestration** | Session start/end discipline when a session touches more than one repo, TODO triage | [SKILL.md](./.agent/skills/multi-repo-orchestration/SKILL.md) |
-| **Nordri Bootstrap Guide** | Bootstrapping Nordri (refr-k8s) on k3d, Mimir integration, ArgoCD sync troubleshooting | [SKILL.md](./.agent/skills/nordri-bootstrap-guide/SKILL.md) |
 | **Topic Branch Workflow** | Branch naming, commit/push workflow, utility scripts, and when direct push to main is acceptable | [SKILL.md](./.agent/skills/topic-branch-workflow/SKILL.md) |
 | **Workflow Auditor** | Detect repeated manual workarounds (3+ instances) and propose utility scripts or ws subcommands | [SKILL.md](./.agent/skills/workflow-auditor/SKILL.md) |
 | **Writing Yggdrasil Docs** | Conventions for documentation, Mermaid diagram rules, terminology, and cluster layer naming | [SKILL.md](./.agent/skills/writing-yggdrasil-docs/SKILL.md) |
@@ -95,29 +89,14 @@ Skills live in `.agent/skills/<name>/SKILL.md`.
 The shared interface for both humans and AI agents. Use `bash scripts/ws <cmd>`
 (or just `ws <cmd>` if `scripts/` is on your PATH).
 
-| Command | Description |
-|---------|-------------|
-| `ws list` | List all components with tier, chart version, local status |
-| `ws status [--verbose]` | Git status across all cloned components |
-| `ws clone [name\|--all]` | Clone ecosystem component(s) into `components/` |
-| `ws pull [name]` | Pull latest for cloned components |
-| `ws push [comp] [branch]` | Push to `siliconsaga` via HTTPS (auto-sources `.env`) |
-| `ws pr <comp> <title> <bodyfile>` | Open PR from current branch to main |
-| `ws issue <repo> <title> <label> <bodyfile>` | File a GitHub issue with attribution check |
-| `ws resolve [--dry-run]` | Generate ArgoCD Application manifests (dual-mode) |
-| `ws vscode` | Generate VS Code workspace file from cloned components |
-| `ws test <comp> [args...]` | Run tests (auto-detects Makefile, Go, Python) |
-| `ws review <comp> <pr#\|threads> [options]` | PR review comments and thread management (see `ws review --help`) |
-| `ws commit <comp> <bodyfile\|message>` | Commit with Co-Authored-By trailer (bodyfile mode preferred) |
-| `ws log [comp] [--oneline]` | Show commits on current branch vs main |
-| `ws clean` | Remove draft files from `.issues/`, `.prs/`, `.commits/` |
-| `ws exec <comp> <cmd...>` | Run a command in a component directory |
-| `ws overlay init` | Clone template overlay for tutorials |
-| `ws overlay <url>` | Clone a community overlay |
-| `ws overlay use <name>` | Set active overlay in ecosystem.local.yaml |
-| `ws overlay list` | Show available overlays and which is active |
-| `ws actions <comp>` | List adapter commands for a component |
-| `ws help` | Show available commands |
+Run `bash scripts/ws help` for the full command list, including auth and
+overlay commands. Pay particular attention to:
+
+- `ws gitlab-auth [--status]` — register credentials from `.env`; `--status`
+  shows which token env vars are set or missing without making changes
+- `ws diagnose <comp>` — show remote URLs, provider detection, and token
+  coverage for a component; run this when onboarding a new component or when
+  push/cr fails with auth errors
 
 **Adding new subcommands:** See [`docs/ws-cli-guide.md`](docs/ws-cli-guide.md)
 for how to add commands and classify their permission tier.
@@ -140,42 +119,13 @@ frontmatter.
 
 Always use a topic branch. Main is protected.
 
-```bash
-# 1. Start from up-to-date main
-git checkout main && git pull siliconsaga main   # pull may need HTTPS workaround — see below
+**Before pushing to a component for the first time in a session**, run
+`ws diagnose <comp>` to confirm token coverage. If a token shows as
+`NOT SET`, add it to `.env`, re-source it, and re-run `ws gitlab-auth`.
 
-# 2. Create topic branch
-git checkout -b <type>/<description>             # feat, fix, docs, chore, test, refactor
-
-# 3. Commit (use ws commit — stages files listed in add: and appends Co-Authored-By trailer)
-#    Write a bodyfile to .commits/ with frontmatter:
-#      ---
-#      message: "type: description"
-#      add:                              # paths relative to component root
-#        - path/to/file1.md
-#        - path/to/file2.md
-#      remove:                           # deleted files to stage for removal
-#        - path/to/old-file.md
-#      ---
-#      Extended commit body here.
-bash scripts/ws commit <component> .commits/my-change.md
-
-# 4. Push (use ws push — handles auth and workarounds automatically)
-bash scripts/ws push <component>
-# Only use --force immediately after a rebase (which rewrites history).
-# Normal commits on a topic branch use regular push.
-
-# 5. Draft PR body → .prs/<description>.md (gitignored)
-cp .agent/pr-template.md .prs/<description>.md
-
-# 6. Open PR
-bash scripts/ws pr <component> "type: description" .prs/<description>.md
-```
-
-**Why `ws push` and not plain `git push`:** The push script auto-detects
-the correct remote (by org name, not `origin`) and includes safety checks
-(e.g., refusing to force-push `main`). See [`docs/git-provider-setup.md`](docs/git-provider-setup.md)
-for auth setup details. Always use `ws push` for pushing.
+For the full step-by-step workflow (branch naming, bodyfile format, CR
+draft, rebase), read the **Topic Branch Workflow** skill at
+`.agent/skills/topic-branch-workflow/SKILL.md`.
 
 ---
 
@@ -184,7 +134,7 @@ for auth setup details. Always use `ws push` for pushing.
 **Comments and docs describe current state, not history.** Code comments,
 test names, and Javadoc should be grounded in what the code does now — not
 what it used to do or what bug it fixed. Historical context belongs in commit
-messages and PR descriptions, which are the record of change.
+messages and CR descriptions, which are the record of change.
 
 Good: `// CoreRegistry is set in initialize() after rootContext is created`
 Bad: `// The previous call here passed null`
@@ -204,7 +154,7 @@ Bad: `@DisplayName("before the fix, this was broken")`
   Classic PAT with `repo` scope recommended (fine-grained PATs have cross-org limitations).
 - GitLab: `glab` CLI uses `GITLAB_TOKEN` automatically — no browser login needed.
   Personal access token with `api` scope.
-- Day-to-day agent PAT scopes: repo-level read/write for contents, issues, PRs/MRs.
+- Day-to-day agent PAT scopes: repo-level read/write for contents, issues, CRs.
   Administration scope is NOT included; use a separate admin token for `setup-branch-protection.sh`.
 
 Full setup guide: [`docs/git-provider-setup.md`](docs/git-provider-setup.md)
@@ -246,16 +196,19 @@ per set of cloned components.
 
 ---
 
-## Issue / PR Drafts
+## Issue / CR / Commit Drafts
 
 | Path | Purpose |
 |------|---------|
-| `.agent/issue-template.md` | Committed template for GitHub issues |
-| `.agent/pr-template.md` | Committed template for PR bodies |
+| `.agent/issue-template.md` | Committed template for issues |
+| `.agent/change-template.md` | Committed template for CR bodies |
+| `.agent/commit-template.md` | Committed template for `ws commit` bodyfiles (frontmatter format) |
 | `.issues/<repo>-<name>.md` | Gitignored draft clearinghouse for issues |
-| `.prs/<description>.md` | Gitignored draft clearinghouse for PRs |
+| `.crs/<description>.md` | Gitignored draft clearinghouse for CRs |
+| `.commits/<description>.md` | Gitignored draft clearinghouse for commit bodyfiles |
 
 All agent-filed issues must start with the AI attribution blockquote from the template.
+Commit bodyfiles use YAML frontmatter to declare the message and files to stage — see the template.
 
 ---
 
