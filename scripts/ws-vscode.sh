@@ -28,11 +28,17 @@ ECO="$(ws_resolve_ecosystem)"
 # Build folder list: yggdrasil root first, then cloned components
 folders='[{"path": "."}'
 # `// {}` guards the fresh-workspace case (null/missing components map).
-for name in $(yq '.components // {} | keys | .[]' "$ECO"); do
-    if [[ -d "$COMPONENTS_DIR/$name/.git" ]]; then
-        folders="$folders, {\"path\": \"components/$name\"}"
+while IFS= read -r name; do
+    if [[ ! "$name" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?(\.[a-z]([a-z0-9-]*[a-z0-9])?)*$ ]]; then
+        echo "ERROR: Invalid component name in ecosystem config; expected lowercase alphanumeric segments with hyphens or dots." >&2
+        exit 1
     fi
-done
+    if [[ -d "$COMPONENTS_DIR/$name/.git" ]]; then
+        folders="$(FOLDERS_JSON="$folders]" COMPONENT_PATH="components/$name" \
+            yq -n -o=json 'strenv(FOLDERS_JSON) | from_json + [{"path": strenv(COMPONENT_PATH)}]')"
+        folders="${folders%]}"
+    fi
+done < <(yq -r '.components // {} | keys | .[]' "$ECO")
 folders="$folders]"
 
 # Write workspace file
