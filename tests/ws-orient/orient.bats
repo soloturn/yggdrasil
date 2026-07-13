@@ -144,6 +144,48 @@ MD
     [[ "$output" == *"AGENTS.md"* ]]
 }
 
+@test "ws orient: selected realm without an approval fingerprint requests reapproval" {
+    mkdir -p "$WORK/realms/realm-fixture"
+    printf 'components: {}\n' > "$WORK/realms/realm-fixture/ecosystem.yaml"
+    printf 'realm: realm-fixture\n' > "$WORK/ecosystem.local.yaml"
+
+    run_ws orient
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Trust: reapproval required"* ]]
+    [[ "$output" == *"ws realm use realm-fixture"* ]]
+}
+
+@test "ws orient: approved realm reports current trust without another prompt" {
+    mkdir -p "$WORK/realms/realm-fixture"
+    printf 'components: {}\n' > "$WORK/realms/realm-fixture/ecosystem.yaml"
+    run_ws realm use --trust realm-fixture
+    [ "$status" -eq 0 ]
+
+    run_ws orient
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Trust: approved"* ]]
+    [[ "$output" != *"Trust: reapproval required"* ]]
+}
+
+@test "ws orient: stale realm trust requests reapproval but still renders" {
+    mkdir -p "$WORK/realms/realm-fixture/adapters"
+    mkdir -p "$WORK/components/app/.git"
+    printf 'components: {}\n' > "$WORK/realms/realm-fixture/ecosystem.yaml"
+    printf 'commands:\n  test: uv run pytest\n' > "$WORK/realms/realm-fixture/adapters/app.yaml"
+    run_ws realm use --trust realm-fixture
+    [ "$status" -eq 0 ]
+    printf 'commands:\n  test: uv run pytest -q\n' > "$WORK/realms/realm-fixture/adapters/app.yaml"
+
+    run_ws orient
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Trust: reapproval required"* ]]
+    [[ "$output" == *"ws realm use realm-fixture"* ]]
+    [[ "$output" == *"uv run pytest -q"* ]]
+}
+
 # ─── per-component adapters with resolved command ──────────────────
 
 # Helper: drop a fixture realm + a cloned component dir. Used by the
@@ -181,6 +223,35 @@ YAML
     [[ "$output" == *"runs: python3 -m pytest --ignore=tests/features"* ]]
     [[ "$output" == *"ws lint"* ]]
     [[ "$output" == *"runs: python3 -m ruff check"* ]]
+}
+
+@test "ws orient: adapter commands cannot repaint the trust display" {
+    _seed_realm_and_component ansispoof
+    cat > "$WORK/realms/realm-fixture/adapters/ansispoof.yaml" <<'YAML'
+commands:
+  test: "safe \x1b[2K\x1b[1A spoofed"
+YAML
+
+    run_ws orient
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"safe"*"spoofed"* ]]
+    [[ "$output" != *$'\x1b'* ]]
+}
+
+@test "ws orient: adapter commands render control whitespace on one line" {
+    _seed_realm_and_component whitespacespoof
+    cat > "$WORK/realms/realm-fixture/adapters/whitespacespoof.yaml" <<'YAML'
+commands:
+  test: "safe\nspoofed\trow\rnext"
+YAML
+
+    run_ws orient
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws test [runs: safe spoofed row next]"* ]]
+    [[ "$output" != *$'safe\nspoofed'* ]]
+    [[ "$output" != *$'spoofed\trow'* ]]
 }
 
 @test "ws orient: cloned component without an adapter file is suppressed (signal-over-noise)" {
