@@ -389,6 +389,19 @@ JSON
     [[ "$output" == *'"permissionDecision":"allow"'* ]]
 }
 
+@test "ask: a partial edit of the current session env file cannot bypass guard-key review" {
+    seed_real_project_config
+    mkdir -p "$WORK/.tmp/gdd-agent-sessions"
+    printf 'GDD_K8S_CONTEXT=prod\n' > "$WORK/.tmp/gdd-agent-sessions/sess-123.env"
+
+    run_hook_write_content "Edit" "$WORK/.tmp/gdd-agent-sessions/sess-123.env" \
+        'dev' "sess-123"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"permissionDecision":"ask"'* ]]
+    [[ "$output" == *"security-sensitive workspace state"* ]]
+}
+
 @test "ask: overwriting another session's existing env file still asks" {
     seed_real_project_config
     mkdir -p "$WORK/.tmp/gdd-agent-sessions"
@@ -438,6 +451,49 @@ JSON
 
     run_hook "git -c alias.diff=!id diff"
 
+    [[ "$output" == *'"permissionDecision":"deny"'* ]]
+    [[ "$output" == *"Git execution modifier"* ]]
+}
+
+@test "security: abbreviated dangerous Git long options deny before broad allows" {
+    write_project_hook_rules ""
+    write_project_settings 'Bash(git *)'
+
+    local command
+    for command in \
+        "git fetch --uplo=sh ." \
+        "git --config-e=alias.status=!id status" \
+        "git fetch --exe=sh ." \
+        "git --exec-p=/tmp/evil log" \
+        "git difftool --extc=sh HEAD" \
+        "git diff --ext-d HEAD" \
+        "git log --outp=.tmp/log" \
+        "git log --output-d=.tmp/logs" \
+        "git grep --open-f=cat needle"; do
+        run_hook "$command"
+        [ "$status" -eq 0 ]
+        [[ "$output" == *'"permissionDecision":"deny"'* ]]
+        [[ "$output" == *"Git execution modifier"* ]]
+    done
+}
+
+@test "security: unrelated complete Git long options remain eligible for normal matching" {
+    write_project_hook_rules ""
+    write_project_settings 'Bash(git fetch *)'
+
+    run_hook "git fetch --update-head-ok origin"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"permissionDecision":"allow"'* ]]
+}
+
+@test "security: Git global exec-path denies before a broad allow" {
+    write_project_hook_rules ""
+    write_project_settings 'Bash(git *)'
+
+    run_hook "git --exec-path=.tmp/git-review-probe review-probe"
+
+    [ "$status" -eq 0 ]
     [[ "$output" == *'"permissionDecision":"deny"'* ]]
     [[ "$output" == *"Git execution modifier"* ]]
 }
@@ -578,14 +634,15 @@ JSON
 # and later Tier 1 arms (redirect, newline) must still fire after a
 # token is normalized.
 
-@test "allow: backslashed drive path as git -C argument matches the allowlist" {
+@test "ask: bare backslashed drive path remains shell-escape ambiguous" {
     write_project_hook_rules ""
     write_project_settings 'Bash(git -C * status)'
 
     run_hook 'git -C D:\Dev\GitWS\yggdrasil status'
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *'"permissionDecision":"allow"'* ]]
+    [[ "$output" == *'"permissionDecision":"ask"'* ]]
+    [[ "$output" == *"Backslash escapes"* ]]
 }
 
 @test "allow: single-quoted backslash drive path matches the allowlist" {
@@ -593,6 +650,16 @@ JSON
     write_project_settings 'Bash(git -C * status)'
 
     run_hook "git -C 'D:\\Dev\\GitWS\\yggdrasil' status"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"permissionDecision":"allow"'* ]]
+}
+
+@test "allow: double-quoted backslash drive path matches the allowlist" {
+    write_project_hook_rules ""
+    write_project_settings 'Bash(git -C * status)'
+
+    run_hook 'git -C "D:\Dev\GitWS\yggdrasil" status'
 
     [ "$status" -eq 0 ]
     [[ "$output" == *'"permissionDecision":"allow"'* ]]
@@ -2075,6 +2142,20 @@ BASH
     run_hook_with_session 'kubectl get pods -n kube-system' "sk8s"
     [ "$status" -eq 0 ]
     [[ "$output" == *"\"permissionDecision\":\"allow\""* ]]
+}
+@test "scoped-redirect: normalized kubectl aliases cannot inherit the raw-read auto-allow" {
+    write_project_hook_rules "$(printf '[scoped-redirect-commands]\nk8s | kubectl* | GDD_K8S_CONTEXT | Use ws k8s\n')"
+    seed_k8s_scope "sk8s" "kind-practice" "alice-sandbox"
+
+    local command
+    for command in \
+        '/usr/bin/kubectl get pods -n kube-system' \
+        'components/evil/kubectl get pods -n kube-system' \
+        'KUBECONFIG=.tmp/config kubectl get pods -n kube-system'; do
+        run_hook_with_session "$command" "sk8s"
+        [ "$status" -eq 0 ]
+        [[ "$output" == *"\"permissionDecision\":\"deny\""* ]]
+    done
 }
 @test "scoped-redirect: raw in-scope kubectl WRITE still redirects to ws k8s (context injection)" {
     write_project_hook_rules "$(printf '[scoped-redirect-commands]\nk8s | kubectl* | GDD_K8S_CONTEXT | Use ws k8s\n')"
