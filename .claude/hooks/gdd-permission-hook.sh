@@ -447,6 +447,13 @@ _parse_rules_file() {
                 case "$section" in
                     scratch-dirs) scratch_dirs+=("$line") ;;
                     ask-commands) ask_commands+=("$line") ;;
+                    # Owned by ws audit-permissions, not by this hook. It shares
+                    # hook-rules.local, so the file legitimately carries sections
+                    # this parser has no use for. Skip the entries rather than
+                    # treating the section as unknown — that path abandons the
+                    # rest of the file, which silently discarded every
+                    # [allow-extras] pattern declared after it.
+                    audit-acknowledged) ;;
                     allow-extras)
                         # Only honored from hook-rules.local (is_local non-empty).
                         # In the committed hook-rules this section is silently inert.
@@ -1780,7 +1787,7 @@ fi
 # key is set in .tmp/gdd-agent-sessions/<sid>.env the tier activates:
 #
 #   (a) `ws k8s …` / `k8s …` → route by k8s_guard_evaluate verdict.
-#       READ_IN_SCOPE: auto-allow; BLOCK: deny; otherwise: fall through.
+#       READ_IN_SCOPE / DRY_RUN_IN_SCOPE: auto-allow; BLOCK: deny; otherwise: fall through.
 #   (b) raw command matching the pattern → redirect deny.
 #   (c) shell script invocation whose file contains raw kubectl → deny.
 #
@@ -1812,9 +1819,9 @@ for _entry in ${scoped_redirect_commands[@]+"${scoped_redirect_commands[@]}"}; d
             ask "Kubernetes guard evaluation failed, so this command requires explicit human approval."
         fi
         case "$_sr_verdict" in
-            READ_IN_SCOPE)
+            READ_IN_SCOPE|DRY_RUN_IN_SCOPE)
                 if [[ "$_k8s_literal_direct" == "1" ]]; then
-                    allow "ws k8s in-scope read"
+                    allow "ws k8s in-scope read or dry-run"
                 fi
                 ;;
             BLOCK:*) deny "$(k8s_render_block "$_sr_verdict" "$_sr_ctx" "$_sr_slug")" ;;
@@ -1836,9 +1843,9 @@ for _entry in ${scoped_redirect_commands[@]+"${scoped_redirect_commands[@]}"}; d
             ask "Kubernetes guard evaluation failed, so this command requires explicit human approval."
         fi
         case "$_sr_kverdict" in
-            READ_IN_SCOPE)
+            READ_IN_SCOPE|DRY_RUN_IN_SCOPE)
                 if [[ "$_k8s_literal_direct" == "1" ]]; then
-                    allow "raw kubectl in-scope read (guard)"
+                    allow "raw kubectl in-scope read or dry-run (guard)"
                 fi
                 ;;
             BLOCK:*) deny "$(k8s_render_block "$_sr_kverdict" "$_sr_ctx" "$_sr_slug")" ;;

@@ -1594,6 +1594,37 @@ figlet *"
     [[ "$output" == *"\"permissionDecision\":\"allow\""* ]]
 }
 
+@test "allow via allow-extras: an [audit-acknowledged] section does not disable the rest of the file" {
+    # Regression: [audit-acknowledged] belongs to ws audit-permissions, which
+    # shares hook-rules.local with this hook. The parser treated it as an
+    # unknown section and abandoned the file, so every [allow-extras] pattern
+    # declared after it silently stopped applying — while hook-rules.local.example
+    # documents exactly this layout, so anyone following the docs hit it.
+    write_project_hook_rules ""
+    write_local_hook_rules "[audit-acknowledged]
+Bash(bash -n:*)
+
+[allow-extras]
+figlet *"
+    run_hook "figlet hello"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"\"permissionDecision\":\"allow\""* ]]
+}
+
+@test "allow via allow-extras: a genuinely unknown section still abandons the file" {
+    # The fail-safe itself must survive: a typo'd or unrecognized section is
+    # still treated as a file-level error rather than silently ignored.
+    write_project_hook_rules ""
+    write_local_hook_rules "[not-a-real-section]
+whatever
+
+[allow-extras]
+figlet *"
+    run_hook "figlet hello"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"\"permissionDecision\":\"allow\""* ]]
+}
+
 # ─── Malformed settings.json doesn't crash the hook ────────────────
 
 @test "malformed settings.json: hook continues to passthrough (no script crash)" {
@@ -3245,6 +3276,22 @@ BASH
     write_project_hook_rules "$(printf '[scoped-redirect-commands]\nk8s | kubectl* | GDD_K8S_CONTEXT | Use ws k8s\n')"
     seed_k8s_scope "sk8s" "kind-practice" "alice-sandbox"
     run_hook_with_session 'ws k8s get pods -n kube-system' "sk8s"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"\"permissionDecision\":\"allow\""* ]]
+}
+@test "scoped-redirect: in-scope ws k8s server dry-run auto-approves" {
+    write_project_hook_rules "$(printf '[scoped-redirect-commands]\nk8s | kubectl* | GDD_K8S_CONTEXT | Use ws k8s\n')"
+    seed_k8s_scope "sk8s" "kind-practice" "alice-sandbox"
+    printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\n  namespace: alice-sandbox\n' > "$WORK/m.yaml"
+    run_hook_with_session "ws k8s apply -f $WORK/m.yaml --dry-run=server" "sk8s"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"\"permissionDecision\":\"allow\""* ]]
+}
+@test "scoped-redirect: in-scope raw kubectl server dry-run auto-approves" {
+    write_project_hook_rules "$(printf '[scoped-redirect-commands]\nk8s | kubectl* | GDD_K8S_CONTEXT | Use ws k8s\n')"
+    seed_k8s_scope "sk8s" "kind-practice" "alice-sandbox"
+    printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\n  namespace: alice-sandbox\n' > "$WORK/m.yaml"
+    run_hook_with_session "kubectl apply -f $WORK/m.yaml --dry-run=server" "sk8s"
     [ "$status" -eq 0 ]
     [[ "$output" == *"\"permissionDecision\":\"allow\""* ]]
 }
